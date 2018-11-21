@@ -1,0 +1,10 @@
+[package]
+name = "chacha20_simd"
+version = "0.1.0"
+authors = ["Jack O'Connor <oconnor663@gmail.com>"]
+
+[dependencies]
+
+[dev-dependencies]
+libsodium-ffi = { version = "0.1.12" }
+openssl = { version = "0.10.12" }
