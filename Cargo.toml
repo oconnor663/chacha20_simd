@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Jack O'Connor <oconnor663@gmail.com>"]
 
 [dependencies]
+byteorder = "1.2.7"
 
 [dev-dependencies]
 libsodium-ffi = { version = "0.1.12" }
