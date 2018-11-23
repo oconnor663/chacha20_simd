@@ -4,10 +4,25 @@ use byteorder::{ByteOrder, LittleEndian};
 use std::cmp;
 
 const IV: &[u8; 16] = b"expand 32-byte k";
-const BLOCKSIZE: usize = 64;
+// NOTE: This is the IETF-standardized 12-byte nonce.
+const NONCEBYTES: usize = 12;
+const KEYBYTES: usize = 32;
+const BLOCKBYTES: usize = 64;
 
-#[inline(always)]
-fn chacha_quarter(v: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
+fn chacha_block_init(
+    block: &mut [u8; BLOCKBYTES],
+    key: &[u8; KEYBYTES],
+    nonce: &[u8; NONCEBYTES],
+    block_num: u32,
+) {
+    block[0..16].copy_from_slice(IV);
+    block[16..48].copy_from_slice(key);
+    LittleEndian::write_u32(&mut block[48..52], block_num);
+    // NOTE: This is the IETF-standardized 12-byte nonce.
+    block[52..64].copy_from_slice(nonce);
+}
+
+fn chacha_quarter_round(v: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     v[a] = v[a].wrapping_add(v[b]);
     v[d] = (v[d] ^ v[a]).rotate_left(16);
     v[c] = v[c].wrapping_add(v[d]);
@@ -18,22 +33,26 @@ fn chacha_quarter(v: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     v[b] = (v[b] ^ v[c]).rotate_left(7);
 }
 
-fn chacha20_block(block: &mut [u8; BLOCKSIZE]) {
+fn chacha_double_round(v: &mut [u32; 16]) {
+    // odd round, columns
+    chacha_quarter_round(v, 0, 4, 8, 12);
+    chacha_quarter_round(v, 1, 5, 9, 13);
+    chacha_quarter_round(v, 2, 6, 10, 14);
+    chacha_quarter_round(v, 3, 7, 11, 15);
+    // even round, diagonals
+    chacha_quarter_round(v, 0, 5, 10, 15);
+    chacha_quarter_round(v, 1, 6, 11, 12);
+    chacha_quarter_round(v, 2, 7, 8, 13);
+    chacha_quarter_round(v, 3, 4, 9, 14);
+}
+
+fn chacha20_permute(block: &mut [u8; BLOCKBYTES]) {
     let mut words = [0u32; 16];
     for i in 0..16 {
         words[i] = LittleEndian::read_u32(&block[i * 4..][..4]);
     }
     for _ in 0..10 {
-        // odd round, columns
-        chacha_quarter(&mut words, 0, 4, 8, 12);
-        chacha_quarter(&mut words, 1, 5, 9, 13);
-        chacha_quarter(&mut words, 2, 6, 10, 14);
-        chacha_quarter(&mut words, 3, 7, 11, 15);
-        // even round, diagonals
-        chacha_quarter(&mut words, 0, 5, 10, 15);
-        chacha_quarter(&mut words, 1, 6, 11, 12);
-        chacha_quarter(&mut words, 2, 7, 8, 13);
-        chacha_quarter(&mut words, 3, 4, 9, 14);
+        chacha_double_round(&mut words);
     }
     for i in 0..16 {
         let orig = LittleEndian::read_u32(&block[i * 4..][..4]);
@@ -43,27 +62,18 @@ fn chacha20_block(block: &mut [u8; BLOCKSIZE]) {
 
 // NOTE: This is the IETF-standardized 12-byte nonce.
 pub fn chacha20_xor(input: &mut [u8], key: &[u8; 32], nonce: &[u8; 12]) {
-    let mut block = [0; BLOCKSIZE];
-    let mut block_num: u32 = 0;
-    let mut block_start: usize = 0;
+    let mut block = [0; BLOCKBYTES];
+    let mut block_start = 0;
     while block_start < input.len() {
-        // Populate the block.
-        block[0..16].copy_from_slice(IV);
-        block[16..48].copy_from_slice(key);
-        // NOTE: This is the IETF-standardized 4-byte counter.
-        LittleEndian::write_u32(&mut block[48..52], block_num);
-        // NOTE: This is the IETF-standardized 12-byte nonce.
-        block[52..64].copy_from_slice(nonce);
+        chacha_block_init(&mut block, key, nonce, (block_start / BLOCKBYTES) as u32);
+        chacha20_permute(&mut block);
 
-        // Permute the block.
-        chacha20_block(&mut block);
-
-        // Write as many block bytes as possible.
-        let block_len = cmp::min(input.len() - block_start, BLOCKSIZE);
+        // XOR in as many block bytes as possible.
+        let block_len = cmp::min(input.len() - block_start, BLOCKBYTES);
         for i in 0..block_len {
             input[block_start + i] ^= block[i];
         }
-        block_num += 1;
+
         block_start += block_len;
     }
 }
