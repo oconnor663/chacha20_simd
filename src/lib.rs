@@ -42,11 +42,11 @@ fn chacha20_block(block: &mut [u8; BLOCKSIZE]) {
 }
 
 // NOTE: This is the IETF-standardized 12-byte nonce.
-pub fn chacha20_stream(out: &mut [u8], key: &[u8; 32], nonce: &[u8; 12]) {
+pub fn chacha20_xor(input: &mut [u8], key: &[u8; 32], nonce: &[u8; 12]) {
     let mut block = [0; BLOCKSIZE];
     let mut block_num: u32 = 0;
     let mut block_start: usize = 0;
-    while block_start < out.len() {
+    while block_start < input.len() {
         // Populate the block.
         block[0..16].copy_from_slice(IV);
         block[16..48].copy_from_slice(key);
@@ -59,8 +59,10 @@ pub fn chacha20_stream(out: &mut [u8], key: &[u8; 32], nonce: &[u8; 12]) {
         chacha20_block(&mut block);
 
         // Write as many block bytes as possible.
-        let block_len = cmp::min(out.len() - block_start, BLOCKSIZE);
-        out[block_start..][..block_len].copy_from_slice(&block[..block_len]);
+        let block_len = cmp::min(input.len() - block_start, BLOCKSIZE);
+        for i in 0..block_len {
+            input[block_start + i] ^= block[i];
+        }
         block_num += 1;
         block_start += block_len;
     }
@@ -86,21 +88,21 @@ mod tests {
 
     #[test]
     fn test_against_libsodium() {
-        let mut libsodium_stream = vec![0x00; STREAM_LEN];
+        let mut libsodium_encrypted = vec![0xab; STREAM_LEN];
         unsafe {
             libsodium_ffi::crypto_stream_chacha20_ietf_xor_ic(
-                libsodium_stream.as_mut_ptr(),
-                libsodium_stream.as_ptr(),
-                libsodium_stream.len() as u64,
+                libsodium_encrypted.as_mut_ptr(),
+                libsodium_encrypted.as_ptr(),
+                libsodium_encrypted.len() as u64,
                 NONCE.as_ptr(),
                 0,
                 KEY.as_ptr(),
             );
         }
 
-        let mut crate_encrypted = vec![0x00; STREAM_LEN];
-        chacha20_stream(&mut crate_encrypted, KEY, NONCE);
+        let mut self_encrypted = vec![0xab; STREAM_LEN];
+        chacha20_xor(&mut self_encrypted, KEY, NONCE);
 
-        assert_eq!(libsodium_stream, crate_encrypted);
+        assert_eq!(libsodium_encrypted, self_encrypted);
     }
 }
