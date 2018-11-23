@@ -48,10 +48,19 @@ fn openssl_chacha20_1mb(b: &mut Bencher) {
 }
 
 #[bench]
-fn self_chacha20_1mb(b: &mut Bencher) {
+fn self_chacha20_xor_1mb(b: &mut Bencher) {
     b.bytes = MB as u64;
     let mut input = vec![0xff; MB];
     b.iter(|| {
         chacha20_xor(&mut input, KEY, NONCE);
+    });
+}
+
+#[bench]
+fn self_chacha20_permute(b: &mut Bencher) {
+    b.bytes = BLOCKBYTES as u64;
+    let mut input = [0xab; BLOCKBYTES];
+    b.iter(|| {
+        chacha20_permute(&mut input);
     });
 }

@@ -4,10 +4,11 @@ use byteorder::{ByteOrder, LittleEndian};
 use std::cmp;
 
 const IV: &[u8; 16] = b"expand 32-byte k";
+
 // NOTE: This is the IETF-standardized 12-byte nonce.
-const NONCEBYTES: usize = 12;
-const KEYBYTES: usize = 32;
-const BLOCKBYTES: usize = 64;
+pub const NONCEBYTES: usize = 12;
+pub const KEYBYTES: usize = 32;
+pub const BLOCKBYTES: usize = 64;
 
 fn chacha_block_init(
     block: &mut [u8; BLOCKBYTES],
@@ -46,7 +47,7 @@ fn chacha_double_round(v: &mut [u32; 16]) {
     chacha_quarter_round(v, 3, 4, 9, 14);
 }
 
-fn chacha20_permute(block: &mut [u8; BLOCKBYTES]) {
+pub fn chacha20_permute(block: &mut [u8; BLOCKBYTES]) {
     let mut words = [0u32; 16];
     for i in 0..16 {
         words[i] = LittleEndian::read_u32(&block[i * 4..][..4]);
