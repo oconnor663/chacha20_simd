@@ -6,6 +6,7 @@ extern crate openssl;
 extern crate test;
 
 use chacha20_simd::*;
+use std::mem;
 use test::Bencher;
 
 const KEY: &[u8; 32] = b"This is my key. It is very nice.";
@@ -57,10 +58,22 @@ fn self_chacha20_xor_1mb(b: &mut Bencher) {
 }
 
 #[bench]
-fn self_chacha20_permute(b: &mut Bencher) {
+fn self_chacha20_permute_portable(b: &mut Bencher) {
     b.bytes = BLOCKBYTES as u64;
     let mut input = [0xab; BLOCKBYTES];
     b.iter(|| {
         chacha20_permute(&mut input);
     });
+}
+
+#[bench]
+fn self_chacha20_permute_avx2(b: &mut Bencher) {
+    unsafe {
+        debug_assert!(is_x86_feature_detected!("avx2"), "oops no AVX2 support");
+        b.bytes = BLOCKBYTES as u64 * 8;
+        let mut input = mem::transmute([0x42u8; BLOCKBYTES * 8]);
+        b.iter(|| {
+            avx2_permute_8way_transposed(&mut input);
+        });
+    }
 }
